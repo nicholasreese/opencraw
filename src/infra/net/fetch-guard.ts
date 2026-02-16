@@ -149,6 +149,23 @@ export async function fetchWithSsrFGuard(params: GuardedFetchOptions): Promise<G
           await release(dispatcher);
           throw new Error("Redirect loop detected");
         }
+
+        // SECURITY: Re-validate redirect target against SSRF policy
+        // This provides early validation before the next loop iteration
+        const redirectParsed = new URL(nextUrl);
+        try {
+          await resolvePinnedHostnameWithPolicy(redirectParsed.hostname, {
+            lookupFn: params.lookupFn,
+            policy: params.policy,
+          });
+        } catch (err) {
+          await release(dispatcher);
+          if (err instanceof SsrFBlockedError) {
+            throw new SsrFBlockedError(`Redirect target blocked by SSRF policy: ${err.message}`);
+          }
+          throw err;
+        }
+
         visited.add(nextUrl);
         void response.body?.cancel();
         await closeDispatcher(dispatcher);

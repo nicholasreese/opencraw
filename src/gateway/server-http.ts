@@ -51,6 +51,7 @@ import {
 } from "./hooks.js";
 import { sendGatewayAuthFailure } from "./http-common.js";
 import { getBearerToken, getHeader } from "./http-utils.js";
+import { isLoopbackAddress } from "./net.js";
 import { isPrivateOrLoopbackAddress, resolveGatewayClientIp } from "./net.js";
 import { handleOpenAiHttpRequest } from "./openai-http.js";
 import { handleOpenResponsesHttpRequest } from "./openresponses-http.js";
@@ -474,6 +475,40 @@ export function createGatewayHttpServer(opts: {
       });
 
   async function handleRequest(req: IncomingMessage, res: ServerResponse) {
+    // SECURITY: Add HTTP security headers to all responses
+    const isSecure = !!opts.tlsOptions;
+
+    // Prevent clickjacking
+    res.setHeader("X-Frame-Options", "DENY");
+
+    // Prevent MIME-type sniffing
+    res.setHeader("X-Content-Type-Options", "nosniff");
+
+    // XSS protection (legacy but still good)
+    res.setHeader("X-XSS-Protection", "1; mode=block");
+
+    // Referrer policy
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+
+    // Content Security Policy
+    res.setHeader(
+      "Content-Security-Policy",
+      [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline'", // unsafe-inline needed for some UI frameworks
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: https:",
+        "font-src 'self'",
+        "connect-src 'self' ws: wss:",
+        "frame-ancestors 'none'",
+      ].join("; "),
+    );
+
+    // Force HTTPS if using TLS
+    if (isSecure) {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
+
     // Don't interfere with WebSocket upgrades; ws handles the 'upgrade' event.
     if (String(req.headers.upgrade ?? "").toLowerCase() === "websocket") {
       return;
@@ -631,6 +666,27 @@ export function attachGatewayUpgradeHandler(opts: {
           return;
         }
       }
+      // SECURITY: Validate Origin header for CSRF protection
+      const origin = req.headers.origin;
+      const host = req.headers.host;
+      if (origin && host) {
+        try {
+          const originUrl = new URL(origin);
+          const hostUrl = new URL(`http://${host}`); // Protocol doesn't matter for comparison
+          // Only allow same-origin or explicitly trusted origins
+          if (originUrl.host !== hostUrl.host && !isLoopbackAddress(originUrl.hostname)) {
+            socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+            socket.destroy();
+            return;
+          }
+        } catch {
+          // Invalid origin, reject
+          socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+          socket.destroy();
+          return;
+        }
+      }
+
       wss.handleUpgrade(req, socket, head, (ws) => {
         wss.emit("connection", ws, req);
       });

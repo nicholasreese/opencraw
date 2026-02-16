@@ -817,6 +817,11 @@ export function createExecTool(
 
         // If allowlist uses safeBins, sanitize only those stdin-only segments:
         // disable glob/var expansion by forcing argv tokens to be literal via single-quoting.
+        // SECURITY: Shell command sanitization to prevent injection
+        // The parser may not perfectly match shell interpretation, so we:
+        // 1. Use safeBins hardening (single-quote stdin-only segments)
+        // 2. Fall back to comprehensive quoting if parsing fails
+        // 3. Log both original and sanitized commands for audit
         if (
           hostSecurity === "allowlist" &&
           analysisOk &&
@@ -836,6 +841,10 @@ export function createExecTool(
               platform: process.platform,
             });
             if (!fallback.ok || !fallback.command) {
+              // SECURITY: Both sanitization methods failed - reject the command
+              logInfo(
+                `exec denied: Command sanitization failed. Original: ${params.command}, Reason: ${safe.reason ?? "unknown"}`,
+              );
               throw new Error(
                 `exec denied: safeBins sanitize failed (${safe.reason ?? "unknown"})`,
               );
@@ -843,10 +852,18 @@ export function createExecTool(
             warnings.push(
               "Warning: safeBins hardening used fallback quoting due to parser mismatch.",
             );
+            // SECURITY: Log command transformation for audit trail
+            logInfo(
+              `exec sanitized (fallback): original="${params.command}" sanitized="${fallback.command}"`,
+            );
             execCommandOverride = fallback.command;
           } else {
             warnings.push(
               "Warning: safeBins hardening disabled glob/variable expansion for stdin-only segments.",
+            );
+            // SECURITY: Log command transformation for audit trail
+            logInfo(
+              `exec sanitized (safeBins): original="${params.command}" sanitized="${safe.command}"`,
             );
             execCommandOverride = safe.command;
           }

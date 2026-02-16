@@ -36,7 +36,7 @@ describe("startTelegramWebhook", () => {
     const cfg = { bindings: [] };
     const { server } = await startTelegramWebhook({
       token: "tok",
-      secret: "secret",
+      secret: "test-webhook-secret-with-sufficient-entropy-for-security",
       accountId: "opie",
       config: cfg,
       port: 0, // random free port
@@ -65,7 +65,7 @@ describe("startTelegramWebhook", () => {
       }),
       "http",
       {
-        secretToken: "secret",
+        secretToken: "test-webhook-secret-with-sufficient-entropy-for-security",
         onTimeout: "return",
         timeoutMilliseconds: 10_000,
       },
@@ -81,7 +81,7 @@ describe("startTelegramWebhook", () => {
     const cfg = { bindings: [] };
     const { server } = await startTelegramWebhook({
       token: "tok",
-      secret: "secret",
+      secret: "test-webhook-secret-with-sufficient-entropy-for-security",
       accountId: "opie",
       config: cfg,
       port: 0,

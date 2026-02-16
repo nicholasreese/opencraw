@@ -2,6 +2,7 @@ import { Type } from "@sinclair/typebox";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { AnyAgentTool } from "./common.js";
 import { formatCliCommand } from "../../cli/command-format.js";
+import { fetchWithSsrfGuard } from "../../infra/net/fetch-guard.js";
 import { wrapWebContent } from "../../security/external-content.js";
 import { normalizeSecretInput } from "../../utils/normalize-secret-input.js";
 import { jsonResult, readNumberParam, readStringParam } from "./common.js";
@@ -473,17 +474,26 @@ async function runPerplexitySearch(params: {
     body.search_recency_filter = recencyFilter;
   }
 
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${params.apiKey}`,
-      "HTTP-Referer": "https://openclaw.ai",
-      "X-Title": "OpenClaw Web Search",
+  // SECURITY: Use SSRF guard to prevent requests to internal networks
+  const res = await fetchWithSsrfGuard(
+    endpoint,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${params.apiKey}`,
+        "HTTP-Referer": "https://openclaw.ai",
+        "X-Title": "OpenClaw Web Search",
+      },
+      body: JSON.stringify(body),
+      signal: withTimeout(undefined, params.timeoutSeconds * 1000),
     },
-    body: JSON.stringify(body),
-    signal: withTimeout(undefined, params.timeoutSeconds * 1000),
-  });
+    {
+      allowPrivateIPs: false,
+      allowLoopback: false,
+      maxRedirects: 3,
+    },
+  );
 
   if (!res.ok) {
     const detail = await readResponseText(res);
@@ -524,15 +534,24 @@ async function runGrokSearch(params: {
   // citations are returned automatically when available — we just parse
   // them from the response without requesting them explicitly (#12910).
 
-  const res = await fetch(XAI_API_ENDPOINT, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${params.apiKey}`,
+  // SECURITY: Use SSRF guard to prevent requests to internal networks
+  const res = await fetchWithSsrfGuard(
+    XAI_API_ENDPOINT,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${params.apiKey}`,
+      },
+      body: JSON.stringify(body),
+      signal: withTimeout(undefined, params.timeoutSeconds * 1000),
     },
-    body: JSON.stringify(body),
-    signal: withTimeout(undefined, params.timeoutSeconds * 1000),
-  });
+    {
+      allowPrivateIPs: false,
+      allowLoopback: false,
+      maxRedirects: 3,
+    },
+  );
 
   if (!res.ok) {
     const detail = await readResponseText(res);
@@ -655,14 +674,23 @@ async function runWebSearch(params: {
     url.searchParams.set("freshness", params.freshness);
   }
 
-  const res = await fetch(url.toString(), {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      "X-Subscription-Token": params.apiKey,
+  // SECURITY: Use SSRF guard to prevent requests to internal networks
+  const res = await fetchWithSsrfGuard(
+    url.toString(),
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "X-Subscription-Token": params.apiKey,
+      },
+      signal: withTimeout(undefined, params.timeoutSeconds * 1000),
     },
-    signal: withTimeout(undefined, params.timeoutSeconds * 1000),
-  });
+    {
+      allowPrivateIPs: false,
+      allowLoopback: false,
+      maxRedirects: 3,
+    },
+  );
 
   if (!res.ok) {
     const detail = await readResponseText(res);

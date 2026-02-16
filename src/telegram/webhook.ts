@@ -20,6 +20,26 @@ import { createTelegramBot } from "./bot.js";
 const TELEGRAM_WEBHOOK_MAX_BODY_BYTES = 1024 * 1024;
 const TELEGRAM_WEBHOOK_BODY_TIMEOUT_MS = 30_000;
 const TELEGRAM_WEBHOOK_CALLBACK_TIMEOUT_MS = 10_000;
+const MIN_WEBHOOK_SECRET_LENGTH = 32;
+const MIN_WEBHOOK_SECRET_ENTROPY = 3.5; // bits per character
+
+/**
+ * SECURITY: Calculate Shannon entropy of a string to detect weak secrets.
+ * Returns entropy in bits per character.
+ */
+function calculateEntropy(str: string): number {
+  if (!str.length) {
+    return 0;
+  }
+  const freq: Record<string, number> = {};
+  for (const char of str) {
+    freq[char] = (freq[char] || 0) + 1;
+  }
+  return Object.values(freq).reduce((entropy, count) => {
+    const p = count / str.length;
+    return entropy - p * Math.log2(p);
+  }, 0);
+}
 
 export async function startTelegramWebhook(opts: {
   token: string;
@@ -40,10 +60,30 @@ export async function startTelegramWebhook(opts: {
   const port = opts.port ?? 8787;
   const host = opts.host ?? "127.0.0.1";
   const secret = typeof opts.secret === "string" ? opts.secret.trim() : "";
+
+  // SECURITY: Enforce strong webhook secret requirements
   if (!secret) {
     throw new Error(
       "Telegram webhook mode requires a non-empty secret token. " +
         "Set channels.telegram.webhookSecret in your config.",
+    );
+  }
+
+  if (secret.length < MIN_WEBHOOK_SECRET_LENGTH) {
+    throw new Error(
+      `Webhook secret must be at least ${MIN_WEBHOOK_SECRET_LENGTH} characters long. ` +
+        `Current length: ${secret.length}. ` +
+        `Generate a secure secret with: openssl rand -base64 32`,
+    );
+  }
+
+  const entropy = calculateEntropy(secret);
+  if (entropy < MIN_WEBHOOK_SECRET_ENTROPY) {
+    throw new Error(
+      `Webhook secret has insufficient entropy (${entropy.toFixed(2)} bits/char, ` +
+        `minimum ${MIN_WEBHOOK_SECRET_ENTROPY} required). ` +
+        `The secret appears to be too predictable. ` +
+        `Generate a secure random secret with: openssl rand -base64 32`,
     );
   }
   const runtime = opts.runtime ?? defaultRuntime;

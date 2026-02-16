@@ -283,6 +283,24 @@ export function loadExecApprovals(): ExecApprovalsFile {
     if (!fs.existsSync(filePath)) {
       return normalizeExecApprovals({ version: 1, agents: {} });
     }
+
+    // SECURITY: Check file permissions on Unix-like systems
+    if (process.platform !== "win32") {
+      try {
+        const stats = fs.statSync(filePath);
+        const mode = stats.mode & 0o777;
+        // Warn if file is readable by group or others
+        if (mode & 0o077) {
+          console.warn(
+            `WARNING: Exec approvals file has overly permissive permissions (${mode.toString(8)}). ` +
+              `It should be 0o600 (owner read/write only). Run: chmod 600 ${filePath}`,
+          );
+        }
+      } catch {
+        // Ignore permission check errors
+      }
+    }
+
     const raw = fs.readFileSync(filePath, "utf8");
     const parsed = JSON.parse(raw) as ExecApprovalsFile;
     if (parsed?.version !== 1) {
@@ -294,14 +312,30 @@ export function loadExecApprovals(): ExecApprovalsFile {
   }
 }
 
+/**
+ * SECURITY: Save exec approvals file with strict permissions.
+ * The file may contain sensitive tokens, so it's written with mode 0o600
+ * (owner read/write only) to prevent unauthorized access.
+ */
 export function saveExecApprovals(file: ExecApprovalsFile) {
   const filePath = resolveExecApprovalsPath();
   ensureDir(filePath);
+
+  // SECURITY: Write file with owner-only permissions (0o600)
   fs.writeFileSync(filePath, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 });
+
+  // SECURITY: Explicitly set permissions (redundant but ensures security)
   try {
     fs.chmodSync(filePath, 0o600);
-  } catch {
-    // best-effort on platforms without chmod
+  } catch (err) {
+    // Platforms without chmod support (e.g., Windows) may fail here
+    // This is best-effort, but log a warning if it fails on Unix-like systems
+    if (process.platform !== "win32") {
+      console.warn(
+        `WARNING: Failed to set exec approvals file permissions to 0o600. ` +
+          `File may be readable by other users: ${filePath}`,
+      );
+    }
   }
 }
 

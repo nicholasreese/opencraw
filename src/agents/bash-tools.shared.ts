@@ -74,6 +74,16 @@ export function buildDockerExecArgs(params: {
   // overriding both Docker ENV and -e PATH=... environment variables.
   // Prepend custom PATH after profile sourcing to ensure custom tools are accessible
   // while preserving system paths that /etc/profile may have added.
+  // SECURITY: Validate PATH contains only safe characters to prevent command injection
+  if (hasCustomPath) {
+    const pathValue = params.env.PATH;
+    // Only allow alphanumeric, slash, dash, underscore, dot, colon, tilde
+    if (!/^[a-zA-Z0-9/_.:~-]*$/.test(pathValue)) {
+      throw new Error(
+        `PATH contains invalid characters. Only alphanumeric, /, _, ., :, ~, and - are allowed. Got: ${pathValue}`,
+      );
+    }
+  }
   const pathExport = hasCustomPath
     ? 'export PATH="${OPENCLAW_PREPEND_PATH}:$PATH"; unset OPENCLAW_PREPEND_PATH; '
     : "";

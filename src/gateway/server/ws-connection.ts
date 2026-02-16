@@ -62,8 +62,8 @@ export function attachGatewayWsConnectionHandler(params: {
   canvasHostEnabled: boolean;
   canvasHostServerPort?: number;
   resolvedAuth: ResolvedGatewayAuth;
-  /** Optional rate limiter for auth brute-force protection. */
-  rateLimiter?: AuthRateLimiter;
+  /** Rate limiter for auth brute-force protection (required). */
+  rateLimiter: AuthRateLimiter;
   gatewayMethods: string[];
   events: string[];
   logGateway: SubsystemLogger;

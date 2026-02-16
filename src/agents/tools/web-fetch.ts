@@ -350,6 +350,10 @@ export async function fetchFirecrawlContent(params: {
   warning?: string;
 }> {
   const endpoint = resolveFirecrawlEndpoint(params.baseUrl);
+
+  // SECURITY: Validate HTTPS before sending API key
+  validateSecureEndpoint(endpoint, "Firecrawl");
+
   const body: Record<string, unknown> = {
     url: params.url,
     formats: ["markdown"],
@@ -653,6 +657,26 @@ async function tryFirecrawlFallback(params: {
     return { text: firecrawl.text, title: firecrawl.title };
   } catch {
     return null;
+  }
+}
+
+/**
+ * SECURITY: Validate that an endpoint uses HTTPS when sending API keys.
+ * Prevents API keys from being transmitted over insecure HTTP connections.
+ */
+function validateSecureEndpoint(url: string, context: string): void {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:") {
+      throw new Error(
+        `SECURITY: ${context} endpoint must use HTTPS when sending API keys. Got: ${parsed.protocol}//...`,
+      );
+    }
+  } catch (err) {
+    if (err instanceof TypeError) {
+      throw new Error(`Invalid URL for ${context}: ${url}`, { cause: err });
+    }
+    throw err;
   }
 }
 

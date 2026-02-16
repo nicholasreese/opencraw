@@ -117,11 +117,75 @@ function foldMarkerChar(char: string): string {
   return char;
 }
 
+/**
+ * SECURITY: Enhanced homoglyph folding with Unicode normalization.
+ * Converts lookalike Unicode characters to their ASCII equivalents
+ * and normalizes the text to prevent marker bypass attempts.
+ */
 function foldMarkerText(input: string): string {
-  return input.replace(
+  // First, normalize to NFD (Canonical Decomposition)
+  // This separates combined characters into base + combining marks
+  let normalized = input.normalize("NFD");
+
+  // Remove combining diacritical marks that could be used to disguise characters
+  normalized = normalized.replace(/[\u0300-\u036f]/g, "");
+
+  // Apply existing homoglyph folding for fullwidth and bracket variants
+  normalized = normalized.replace(
     /[\uFF21-\uFF3A\uFF41-\uFF5A\uFF1C\uFF1E\u2329\u232A\u3008\u3009\u2039\u203A\u27E8\u27E9\uFE64\uFE65]/g,
     (char) => foldMarkerChar(char),
   );
+
+  // Additional homoglyph folding for common lookalikes
+  const additionalMappings: Record<string, string> = {
+    // Cyrillic lookalikes
+    А: "A",
+    В: "B",
+    Е: "E",
+    К: "K",
+    М: "M",
+    Н: "H",
+    О: "O",
+    Р: "P",
+    С: "C",
+    Т: "T",
+    У: "Y",
+    Х: "X",
+    а: "a",
+    е: "e",
+    о: "o",
+    р: "p",
+    с: "c",
+    х: "x",
+    // Greek lookalikes
+    Α: "A",
+    Β: "B",
+    Ε: "E",
+    Ζ: "Z",
+    Η: "H",
+    Ι: "I",
+    Κ: "K",
+    Μ: "M",
+    Ν: "N",
+    Ο: "O",
+    Ρ: "P",
+    Τ: "T",
+    Υ: "Y",
+    Χ: "X",
+    // Zero-width and invisible characters
+    "\u200B": "",
+    "\u200C": "",
+    "\u200D": "",
+    "\uFEFF": "",
+  };
+
+  normalized = normalized.replace(
+    /[АВЕКМНОРСТУХаеорсхΑΒΕΖΗΙΚΜΝΟΡΤΥΧ\u200B\u200C\u200D\uFEFF]/g,
+    (char) => additionalMappings[char] || char,
+  );
+
+  // Normalize to NFC (Canonical Composition) for final form
+  return normalized.normalize("NFC");
 }
 
 function replaceMarkers(content: string): string {
